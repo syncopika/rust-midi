@@ -1,0 +1,12 @@
+https://github.com/insomnimus/nodi
+https://github.com/insomnimus/midnote
+
+cool idea: https://www.reddit.com/r/audioengineering/comments/pgl5fr/looking_for_a_software_to_extract_statistics_from/
+would be cool to get total num notes as well if possible
+
+https://musescore.org/en/node/71561
+https://musescore.org/en/node/281682
+https://www.recordingblogs.com/wiki/midi-meta-messages
+https://www.recordingblogs.com/wiki/midi-program-change-message
+https://forum.cockos.com/showthread.php?t=286453#:~:text=Look%20for%20the%20Program%20Change,you%20which%20instrument%20to%20use.
+https://www.reddit.com/r/synthesizers/comments/tfsfvj/midi_program_changes_a_quick_reference_guide_and/
