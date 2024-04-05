@@ -11,4 +11,4 @@ clap = { version = "3.1.18", features = ["cargo", "unicode", "wrap_help"] }
 crossterm = { version = "0.23.2", features = ["serde"] }
 midir = "0.8.0"
 midly = "0.5.2"
-nodi = { version = "0.15.2", optional = true, features = ["hybrid-sleep"] }
+nodi = { version = "0.15.2", features = ["hybrid-sleep", "midir"] }

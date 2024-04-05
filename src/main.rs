@@ -1,9 +1,10 @@
 // https://github.com/insomnimus/midnote
 
 use clap::{arg, command};//, value_parser, ArgAction, Command};
-use std::path::Path;
+use std::{path::Path, error::Error};
 use midly::Smf;
 use std::collections::HashMap;
+use nodi;
 
 struct MidiInfo {
     num_tracks: usize,
@@ -62,7 +63,7 @@ fn get_midi_info(tracks: Vec<Vec<midly::TrackEvent>>) -> MidiInfo {
                                   .unwrap_or(&program.to_string())
                                   .to_string()
                             );
-                        }
+                        },
                         _ => (),
                     }
                 },
@@ -78,11 +79,11 @@ fn get_midi_info(tracks: Vec<Vec<midly::TrackEvent>>) -> MidiInfo {
                         midly::MetaMessage::TrackNumber(_track_num) => {
                             //println!("got track num");
                         },
-                        midly::MetaMessage::MidiChannel(_channel) => {
-                            //println!("got midi channel");
+                        midly::MetaMessage::MidiChannel(channel) => {
+                            println!("got midi channel: {}", channel);
                         },
-                        midly::MetaMessage::MidiPort(_port) => {
-                            //println!("got midi port");
+                        midly::MetaMessage::MidiPort(port) => {
+                            println!("got midi port: {}", port);
                         },
                         midly::MetaMessage::Tempo(tempo) => {
                             // we get tempo as microseconds per beat and there's 6e7 microseconds in a minute
@@ -100,6 +101,48 @@ fn get_midi_info(tracks: Vec<Vec<midly::TrackEvent>>) -> MidiInfo {
     }
     
     return midi_info;
+}
+
+// https://github.com/insomnimus/nodi/blob/main/examples/play_midi.rs#L69
+fn get_connection(n: usize) -> Result<midir::MidiOutputConnection, Box<dyn Error>> {
+    let midi_out = midir::MidiOutput::new("play_midi")?;
+
+    let out_ports = midi_out.ports();
+    
+    if out_ports.is_empty() {
+      return Err("no MIDI output device detected".into());
+    }
+    
+    if n >= out_ports.len() {
+      return Err(format!(
+        "only {} MIDI devices detected",
+        out_ports.len()
+      )
+      .into());
+    }
+
+    let out_port = &out_ports[n];
+    let out = midi_out.connect(out_port, "port-name")?;
+    Ok(out)
+}
+
+// https://github.com/insomnimus/nodi/blob/main/examples/play_midi.rs#L45
+fn play(smf: &midly::Smf) -> Result<(), Box<dyn Error>> {
+    let timer = nodi::timers::Ticker::try_from(smf.header.timing)?;
+
+    let conn = get_connection(0)?; // TODO: don't hardcode device number
+
+    let sheet = match smf.header.format {
+        midly::Format::SingleTrack | midly::Format::Sequential => nodi::Sheet::sequential(&smf.tracks),
+        midly::Format::Parallel => nodi::Sheet::parallel(&smf.tracks),
+    };
+
+    let mut player = nodi::Player::new(timer, conn);
+
+    println!("starting playback");
+    player.play_sheet(&sheet);
+    
+    Ok(())
 }
 
 fn main() {
@@ -133,5 +176,9 @@ fn main() {
         }
         
         println!("tempi: {:?}", midi_info.tempi);
+        
+        // play the file
+        let smf2 = Smf::parse(&data).unwrap();
+        play(&smf2);
     }
 }
