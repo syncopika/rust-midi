@@ -1,12 +1,15 @@
 // https://github.com/insomnimus/midnote
 
-use clap::{arg, command};//, value_parser, ArgAction, Command};
-use std::path::Path;
+use clap::{arg, command, ArgAction};//, value_parser, ArgAction, Command};
+use std::{path::Path, error::Error};
 use midly::Smf;
 use std::collections::HashMap;
+use nodi;
 
 struct MidiInfo {
     num_tracks: usize,
+    ports: HashMap<usize, Vec<u8>>,
+    channels: HashMap<usize, Vec<u8>>,
     instruments: HashMap<usize, Vec<String>>, // separate by track
     tempi: Vec<f32>, // Vec in case there are tempo changes?
 }
@@ -39,20 +42,26 @@ fn get_midi_info(tracks: Vec<Vec<midly::TrackEvent>>) -> MidiInfo {
     instruments_map.insert(12, String::from("marimba"));
     instruments_map.insert(11, String::from("vibraphone"));
     instruments_map.insert(0, String::from("acoustic grand piano"));
+    instruments_map.insert(24, String::from("guitar"));
     
     let mut midi_info = MidiInfo {
         num_tracks: tracks.len(),
+        ports: HashMap::new(),
+        channels: HashMap::new(),
         instruments: HashMap::new(),
         tempi: Vec::new(),
     };
     
     for (i, track) in tracks.iter().enumerate() {
         //println!("track event length: {}", track.len());
+        
+        let mut track_ports = Vec::new();
+        let mut track_channels = Vec::new();
         let mut track_instruments = Vec::new();
         
         for track_event in track.iter() {
             match track_event.kind {
-                midly::TrackEventKind::Midi{channel, message} => {
+                midly::TrackEventKind::Midi{channel: _, message} => {
                     //println!("got a midi event");
                     match message {
                         midly::MidiMessage::ProgramChange{program} => {
@@ -62,7 +71,7 @@ fn get_midi_info(tracks: Vec<Vec<midly::TrackEvent>>) -> MidiInfo {
                                   .unwrap_or(&program.to_string())
                                   .to_string()
                             );
-                        }
+                        },
                         _ => (),
                     }
                 },
@@ -78,11 +87,13 @@ fn get_midi_info(tracks: Vec<Vec<midly::TrackEvent>>) -> MidiInfo {
                         midly::MetaMessage::TrackNumber(_track_num) => {
                             //println!("got track num");
                         },
-                        midly::MetaMessage::MidiChannel(_channel) => {
-                            //println!("got midi channel");
+                        midly::MetaMessage::MidiChannel(channel) => {
+                            //println!("got midi channel: {}", channel);
+                            track_channels.push(channel.as_int());
                         },
-                        midly::MetaMessage::MidiPort(_port) => {
-                            //println!("got midi port");
+                        midly::MetaMessage::MidiPort(port) => {
+                            //println!("got midi port: {}", port);
+                            track_ports.push(port.as_int());
                         },
                         midly::MetaMessage::Tempo(tempo) => {
                             // we get tempo as microseconds per beat and there's 6e7 microseconds in a minute
@@ -96,17 +107,85 @@ fn get_midi_info(tracks: Vec<Vec<midly::TrackEvent>>) -> MidiInfo {
             }
         }
         
+        midi_info.ports.insert(i+1, track_ports);
+        midi_info.channels.insert(i+1, track_channels);
         midi_info.instruments.insert(i+1, track_instruments);
     }
     
     return midi_info;
 }
 
+// https://github.com/insomnimus/nodi/blob/main/examples/play_midi.rs#L69
+fn get_connection(n: usize) -> Result<midir::MidiOutputConnection, Box<dyn Error>> {
+    let midi_out = midir::MidiOutput::new("play_midi")?;
+
+    let out_ports = midi_out.ports();
+    
+    if out_ports.is_empty() {
+      return Err("no MIDI output device detected".into());
+    }
+    
+    if n >= out_ports.len() {
+      return Err(format!(
+        "only {} MIDI devices detected",
+        out_ports.len()
+      )
+      .into());
+    }
+
+    let out_port = &out_ports[n];
+    let out = midi_out.connect(out_port, "port-name")?;
+    Ok(out)
+}
+
+fn display_midi_info(midi_info: MidiInfo) {
+    println!("the file has {} tracks", midi_info.num_tracks);
+    //println!("num instruments: {}", midi_info.instruments.len());
+    println!("num tempi: {}", midi_info.tempi.len());
+    println!("tempi: {:?}", midi_info.tempi);
+    
+    let mut track_nums: Vec<&usize> = midi_info.instruments.keys().collect();
+    track_nums.sort();
+    
+    for track in track_nums {
+        println!("track {} instruments: {:?}", track, midi_info.instruments.get(track).unwrap());
+        println!("track {} channels: {:?}", track, midi_info.channels.get(track).unwrap());
+        println!("track {} ports: {:?}", track, midi_info.ports.get(track).unwrap());
+        println!("--------------------------");
+    }
+}
+
+// https://github.com/insomnimus/nodi/blob/main/examples/play_midi.rs#L45
+fn play(smf: &midly::Smf) -> Result<(), Box<dyn Error>> {
+    let timer = nodi::timers::Ticker::try_from(smf.header.timing)?;
+
+    let conn = get_connection(0)?; // TODO: don't hardcode device number
+
+    let sheet = match smf.header.format {
+        midly::Format::SingleTrack | midly::Format::Sequential => nodi::Sheet::sequential(&smf.tracks),
+        midly::Format::Parallel => nodi::Sheet::parallel(&smf.tracks),
+    };
+
+    let mut player = nodi::Player::new(timer, conn);
+
+    println!("starting playback");
+    player.play_sheet(&sheet);
+    
+    Ok(())
+}
+
 fn main() {
-    // TODO: add flag to get MIDI info like instruments, num tracks, etc.
-    // TODO: add flag to play MIDI file
     let matches = command!()
-        .arg(arg!(--filepath <VALUE>).required(true))
+        .arg(
+            arg!(-f --filepath <VALUE>)
+                .required(true)
+                .help("path to the MIDI file")
+         )
+        .arg(
+            arg!(-p --play)
+                .action(ArgAction::SetTrue)
+                .help("play the MIDI file")
+         )
         .get_matches();
         
     if let Some(filepath) = matches.get_one::<String>("filepath") {
@@ -119,19 +198,13 @@ fn main() {
         let data = std::fs::read(filepath).unwrap();
         let smf = Smf::parse(&data).unwrap();
         
-        //println!("------------------");
-        
         let midi_info = get_midi_info(smf.tracks);
+        display_midi_info(midi_info);
         
-        println!("the file has {} tracks", midi_info.num_tracks);
-        //println!("num instruments: {}", midi_info.instruments.len());
-        println!("num tempi: {}", midi_info.tempi.len());
-        
-        println!("instruments per track:");
-        for (track, instruments) in midi_info.instruments {
-            println!("track: {}: {:?}", track, instruments);
+        if *matches.get_one::<bool>("play").unwrap() {
+            // play the file
+            let smf2 = Smf::parse(&data).unwrap();
+            let _ = play(&smf2);
         }
-        
-        println!("tempi: {:?}", midi_info.tempi);
     }
 }

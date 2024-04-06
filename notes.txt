@@ -1,5 +1,6 @@
 https://github.com/insomnimus/nodi
 https://github.com/insomnimus/midnote
+https://rust-cli.github.io/book/index.html
 
 cool idea: https://www.reddit.com/r/audioengineering/comments/pgl5fr/looking_for_a_software_to_extract_statistics_from/
 would be cool to get total num notes as well if possible
