@@ -8,6 +8,8 @@ use nodi;
 
 struct MidiInfo {
     num_tracks: usize,
+    ports: HashMap<usize, Vec<u8>>,
+    channels: HashMap<usize, Vec<u8>>,
     instruments: HashMap<usize, Vec<String>>, // separate by track
     tempi: Vec<f32>, // Vec in case there are tempo changes?
 }
@@ -40,15 +42,21 @@ fn get_midi_info(tracks: Vec<Vec<midly::TrackEvent>>) -> MidiInfo {
     instruments_map.insert(12, String::from("marimba"));
     instruments_map.insert(11, String::from("vibraphone"));
     instruments_map.insert(0, String::from("acoustic grand piano"));
+    instruments_map.insert(24, String::from("guitar"));
     
     let mut midi_info = MidiInfo {
         num_tracks: tracks.len(),
+        ports: HashMap::new(),
+        channels: HashMap::new(),
         instruments: HashMap::new(),
         tempi: Vec::new(),
     };
     
     for (i, track) in tracks.iter().enumerate() {
         //println!("track event length: {}", track.len());
+        
+        let mut track_ports = Vec::new();
+        let mut track_channels = Vec::new();
         let mut track_instruments = Vec::new();
         
         for track_event in track.iter() {
@@ -80,10 +88,12 @@ fn get_midi_info(tracks: Vec<Vec<midly::TrackEvent>>) -> MidiInfo {
                             //println!("got track num");
                         },
                         midly::MetaMessage::MidiChannel(channel) => {
-                            println!("got midi channel: {}", channel);
+                            //println!("got midi channel: {}", channel);
+                            track_channels.push(channel.as_int());
                         },
                         midly::MetaMessage::MidiPort(port) => {
-                            println!("got midi port: {}", port);
+                            //println!("got midi port: {}", port);
+                            track_ports.push(port.as_int());
                         },
                         midly::MetaMessage::Tempo(tempo) => {
                             // we get tempo as microseconds per beat and there's 6e7 microseconds in a minute
@@ -97,6 +107,8 @@ fn get_midi_info(tracks: Vec<Vec<midly::TrackEvent>>) -> MidiInfo {
             }
         }
         
+        midi_info.ports.insert(i+1, track_ports);
+        midi_info.channels.insert(i+1, track_channels);
         midi_info.instruments.insert(i+1, track_instruments);
     }
     
@@ -124,6 +136,23 @@ fn get_connection(n: usize) -> Result<midir::MidiOutputConnection, Box<dyn Error
     let out_port = &out_ports[n];
     let out = midi_out.connect(out_port, "port-name")?;
     Ok(out)
+}
+
+fn display_midi_info(midi_info: MidiInfo) {
+    println!("the file has {} tracks", midi_info.num_tracks);
+    //println!("num instruments: {}", midi_info.instruments.len());
+    println!("num tempi: {}", midi_info.tempi.len());
+    println!("tempi: {:?}", midi_info.tempi);
+    
+    let mut track_nums: Vec<&usize> = midi_info.instruments.keys().collect();
+    track_nums.sort();
+    
+    for track in track_nums {
+        println!("track {} instruments: {:?}", track, midi_info.instruments.get(track).unwrap());
+        println!("track {} channels: {:?}", track, midi_info.channels.get(track).unwrap());
+        println!("track {} ports: {:?}", track, midi_info.ports.get(track).unwrap());
+        println!("--------------------------");
+    }
 }
 
 // https://github.com/insomnimus/nodi/blob/main/examples/play_midi.rs#L45
@@ -169,20 +198,8 @@ fn main() {
         let data = std::fs::read(filepath).unwrap();
         let smf = Smf::parse(&data).unwrap();
         
-        //println!("------------------");
-        
         let midi_info = get_midi_info(smf.tracks);
-        
-        println!("the file has {} tracks", midi_info.num_tracks);
-        //println!("num instruments: {}", midi_info.instruments.len());
-        println!("num tempi: {}", midi_info.tempi.len());
-        
-        println!("instruments per track:");
-        for (track, instruments) in midi_info.instruments {
-            println!("track: {}: {:?}", track, instruments);
-        }
-        
-        println!("tempi: {:?}", midi_info.tempi);
+        display_midi_info(midi_info);
         
         if *matches.get_one::<bool>("play").unwrap() {
             // play the file
