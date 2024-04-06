@@ -1,6 +1,6 @@
 // https://github.com/insomnimus/midnote
 
-use clap::{arg, command};//, value_parser, ArgAction, Command};
+use clap::{arg, command, ArgAction};//, value_parser, ArgAction, Command};
 use std::{path::Path, error::Error};
 use midly::Smf;
 use std::collections::HashMap;
@@ -53,7 +53,7 @@ fn get_midi_info(tracks: Vec<Vec<midly::TrackEvent>>) -> MidiInfo {
         
         for track_event in track.iter() {
             match track_event.kind {
-                midly::TrackEventKind::Midi{channel, message} => {
+                midly::TrackEventKind::Midi{channel: _, message} => {
                     //println!("got a midi event");
                     match message {
                         midly::MidiMessage::ProgramChange{program} => {
@@ -146,10 +146,17 @@ fn play(smf: &midly::Smf) -> Result<(), Box<dyn Error>> {
 }
 
 fn main() {
-    // TODO: add flag to get MIDI info like instruments, num tracks, etc.
-    // TODO: add flag to play MIDI file
     let matches = command!()
-        .arg(arg!(--filepath <VALUE>).required(true))
+        .arg(
+            arg!(-f --filepath <VALUE>)
+                .required(true)
+                .help("path to the MIDI file")
+         )
+        .arg(
+            arg!(-p --play)
+                .action(ArgAction::SetTrue)
+                .help("play the MIDI file")
+         )
         .get_matches();
         
     if let Some(filepath) = matches.get_one::<String>("filepath") {
@@ -177,8 +184,10 @@ fn main() {
         
         println!("tempi: {:?}", midi_info.tempi);
         
-        // play the file
-        let smf2 = Smf::parse(&data).unwrap();
-        play(&smf2);
+        if *matches.get_one::<bool>("play").unwrap() {
+            // play the file
+            let smf2 = Smf::parse(&data).unwrap();
+            let _ = play(&smf2);
+        }
     }
 }
