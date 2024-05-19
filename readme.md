@@ -1,6 +1,6 @@
 just playing with Rust to explore MIDI files. nothing much to see here atm :)    
     
-also thanks to insomnimus for https://github.com/insomnimus/nodi, which I'm using in this project.    
+also thanks to the creators of [nodi](https://github.com/insomnimus/nodi), [midly](https://github.com/kovaxis/midly) and [midir](https://github.com/Boddlnagg/midir), which help make it fairly easy to work with MIDI files.    
     
 ![screenshot of command line output for the app](screenshot.png)    
     
