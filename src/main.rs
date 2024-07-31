@@ -12,6 +12,7 @@ struct MidiInfo {
     channels: HashMap<usize, Vec<u8>>,
     instruments: HashMap<usize, Vec<String>>, // separate by track
     tempi: Vec<f32>, // Vec in case there are tempo changes?
+    notes_per_track: HashMap<usize, usize>,
 }
 
 fn get_midi_info(tracks: Vec<Vec<midly::TrackEvent>>) -> MidiInfo {
@@ -50,6 +51,7 @@ fn get_midi_info(tracks: Vec<Vec<midly::TrackEvent>>) -> MidiInfo {
         channels: HashMap::new(),
         instruments: HashMap::new(),
         tempi: Vec::new(),
+        notes_per_track: HashMap::new(),
     };
     
     for (i, track) in tracks.iter().enumerate() {
@@ -58,6 +60,7 @@ fn get_midi_info(tracks: Vec<Vec<midly::TrackEvent>>) -> MidiInfo {
         let mut track_ports = Vec::new();
         let mut track_channels = Vec::new();
         let mut track_instruments = Vec::new();
+        let mut num_notes = 0;
         
         for track_event in track.iter() {
             match track_event.kind {
@@ -71,6 +74,9 @@ fn get_midi_info(tracks: Vec<Vec<midly::TrackEvent>>) -> MidiInfo {
                                   .unwrap_or(&program.to_string())
                                   .to_string()
                             );
+                        },
+                        midly::MidiMessage::NoteOn{key: _, vel: _} => {
+                            num_notes += 1;
                         },
                         _ => (),
                     }
@@ -110,6 +116,7 @@ fn get_midi_info(tracks: Vec<Vec<midly::TrackEvent>>) -> MidiInfo {
         midi_info.ports.insert(i+1, track_ports);
         midi_info.channels.insert(i+1, track_channels);
         midi_info.instruments.insert(i+1, track_instruments);
+        midi_info.notes_per_track.insert(i+1, num_notes);
     }
     
     return midi_info;
@@ -129,11 +136,16 @@ fn get_connection(n: usize) -> Result<midir::MidiOutputConnection, Box<dyn Error
       return Err(format!(
         "only {} MIDI devices detected",
         out_ports.len()
-      )
-      .into());
+      ).into());
     }
+    
+    println!("number of MIDI output ports available: {}", out_ports.len());
 
     let out_port = &out_ports[n];
+    
+    let port_name = midi_out.port_name(out_port).unwrap();
+    println!("port name: {}", port_name);
+    
     let out = midi_out.connect(out_port, "port-name")?;
     Ok(out)
 }
@@ -151,6 +163,7 @@ fn display_midi_info(midi_info: MidiInfo) {
         println!("track {} instruments: {:?}", track, midi_info.instruments.get(track).unwrap());
         println!("track {} channels: {:?}", track, midi_info.channels.get(track).unwrap());
         println!("track {} ports: {:?}", track, midi_info.ports.get(track).unwrap());
+        println!("track {} number of notes: {:?}", track, midi_info.notes_per_track.get(track).unwrap());
         println!("--------------------------");
     }
 }
