@@ -75,8 +75,12 @@ fn get_midi_info(tracks: Vec<Vec<midly::TrackEvent>>) -> MidiInfo {
                                   .to_string()
                             );
                         },
-                        midly::MidiMessage::NoteOn{key: _, vel: _} => {
-                            num_notes += 1;
+                        midly::MidiMessage::NoteOn{key: _, vel} => {
+                            if vel != 0 {
+                                // avoid double-counting notes because velocity could be 0,
+                                // which is essentially a NoteOff-equivalent message
+                                num_notes += 1;
+                            }
                         },
                         _ => (),
                     }
